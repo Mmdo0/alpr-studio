@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ALPR Studio — سامانه هوشمند تشخیص و خوانش پلاک</title>
+  <script src="/static/tf.min.js"></script>
+  <style>
+    :root {
+      --bg: #05080f;
+      --surface: rgba(15, 22, 36, 0.78);
+      --surface-2: rgba(24, 34, 54, 0.85);
+      --border: rgba(148, 163, 184, 0.14);
+      --border-hover: rgba(59, 130, 246, 0.5);
+      --text: #f1f5f9;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --cyan: #06b6d4;
+      --indigo: #6366f1;
+      --ok: #10b981;
+      --ok-soft: rgba(16, 185, 129, 0.14);
+      --warn: #f59e0b;
+      --warn-soft: rgba(245, 158, 11, 0.14);
+      --err: #ef4444;
+      --err-soft: rgba(239, 68, 68, 0.14);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Vazirmatn', 'IRANSans', 'Segoe UI', Tahoma, system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 26px 20px 56px;
+      line-height: 1.6;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* پس‌زمینه شبکه مهندسی + هاله‌های نوری */
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background-image:
+        radial-gradient(circle at 12% 18%, rgba(37, 99, 235, 0.18), transparent 42%),
+        radial-gradient(circle at 86% 12%, rgba(6, 182, 212, 0.14), transparent 38%),
+        radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.09), transparent 45%),
+        linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 38px 38px, 38px 38px;
+      pointer-events: none;
+    }
+
+    /* طرح‌های پلاک متحرک و شناور در پس‌زمینه */
+    .bg-plates {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .float-plate {
+      position: absolute;
+      display: flex;
+      direction: ltr;
+      align-items: stretch;
+      border-radius: 7px;
+      border: 1.5px solid rgba(148, 163, 184, 0.14);
+      background: rgba(15, 23, 42, 0.35);
+      backdrop-filter: blur(3px);
+      opacity: 0.22;
+      color: rgba(226, 232, 240, 0.55);
+      font-family: ui-monospace, 'Consolas', monospace;
+      font-weight: 700;
+      letter-spacing: 2px;
+      animation: driftPlate var(--dur, 22s) ease-in-out infinite;
+    }
+
+    .float-plate .fp-strip {
+      width: 18px;
+      background: rgba(37, 99, 235, 0.45);
+      border-radius: 5px 0 0 5px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      font-size: 7px;
+      padding-bottom: 3px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .float-plate .fp-body {
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .float-plate .fp-city {
+      border-left: 1px solid rgba(148, 163, 184, 0.2);
+      padding-left: 8px;
+      font-size: 0.72rem;
+    }
+
+    .fp-1 { top: 11%; left: 4%; --dur: 24s; --dx: 28px; --dy: -22px; --rot: -6deg; }
+    .fp-2 { top: 24%; right: 3%; --dur: 28s; --dx: -30px; --dy: 24px; --rot: 5deg; animation-delay: -5s; }
+    .fp-3 { top: 58%; left: 2%; --dur: 26s; --dx: 24px; --dy: 26px; --rot: 4deg; animation-delay: -10s; }
+    .fp-4 { top: 74%; right: 5%; --dur: 30s; --dx: -26px; --dy: -20px; --rot: -5deg; animation-delay: -14s; }
+    .fp-5 { top: 42%; right: 44%; --dur: 34s; --dx: 20px; --dy: -28px; --rot: 3deg; opacity: 0.12; animation-delay: -8s; }
+
+    @keyframes driftPlate {
+      0%, 100% { transform: translate(0, 0) rotate(var(--rot, 0deg)); }
+      50% { transform: translate(var(--dx, 20px), var(--dy, -20px)) rotate(calc(var(--rot, 0deg) + 3deg)); }
+    }
+
+    .app { max-width: 1240px; margin: 0 auto; }
+
+    /* هدر */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-icon {
+      width: 42px; height: 42px; border-radius: 11px;
+      background: linear-gradient(135deg, #2563eb, #06b6d4);
+      display: grid; place-items: center; color: #fff;
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+      flex-shrink: 0;
+    }
+    .brand h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.2px; }
+    .brand small { display: block; font-size: 0.74rem; color: var(--muted); }
+
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 12px; border-radius: 999px; font-size: 0.75rem;
+      background: rgba(8, 12, 22, 0.75); border: 1px solid var(--border); color: var(--muted);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
+    .dot.err { background: var(--err); }
+
+    /* چیدمان اصلی */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 940px) { .main-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+    }
+
+    .card-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px; gap: 10px; flex-wrap: wrap;
+    }
+    .card-title {
+      font-size: 0.88rem; font-weight: 600; color: var(--text);
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .card-title svg { color: var(--accent); }
+
+    /* دکمه‌ها */
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      font-family: inherit; font-size: 0.79rem; font-weight: 600;
+      padding: 7px 14px; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+      display: inline-flex; align-items: center; gap: 7px;
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    button:hover:not(:disabled) {
+      border-color: var(--border-hover);
+      background: rgba(59, 130, 246, 0.14);
+      transform: translateY(-1px);
+    }
+    button.primary {
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      border-color: transparent; color: #fff;
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+    button.primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ناحیه آپلود */
+    .dropzone {
+      border: 1.5px dashed rgba(148, 163, 184, 0.26);
+      border-radius: 14px;
+      padding: 26px 18px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(7, 11, 20, 0.45);
+      transition: all 0.22s ease;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.08);
+      box-shadow: inset 0 0 24px rgba(59, 130, 246, 0.08);
+    }
+    .dropzone-icon {
+      width: 42px; height: 42px; margin: 0 auto 10px;
+      border-radius: 12px; background: rgba(59, 130, 246, 0.12);
+      color: var(--accent); display: grid; place-items: center;
+    }
+    .dropzone strong { font-size: 0.92rem; display: block; color: var(--text); }
+    .dropzone p { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* نمایشگر تصویر */
+    .stage {
+      margin-top: 16px;
+      background: #04070d;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      min-height: 250px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .stage canvas, .stage video { max-width: 100%; max-height: 360px; display: none; }
+    .stage-empty { color: var(--muted); font-size: 0.82rem; text-align: center; padding: 16px; }
+
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+      box-shadow: 0 0 16px #38bdf8;
+      display: none; pointer-events: none;
+      animation: scanMove 1.35s ease-in-out infinite;
+    }
+    .stage.scanning .scan-line { display: block; }
+    @keyframes scanMove {
+      0% { top: 4%; opacity: 0.25; }
+      50% { top: 94%; opacity: 1; }
+      100% { top: 4%; opacity: 0.25; }
+    }
+
+    .webcam-bar { display: none; justify-content: center; gap: 10px; margin-top: 12px; }
+    .webcam-bar.active { display: flex; }
+
+    /* بازرس برش پلاک */
+    .crop-inspector {
+      margin-top: 14px; padding: 12px;
+      background: rgba(7, 11, 20, 0.7); border: 1px solid var(--border);
+      border-radius: 12px; display: none;
+    }
+    .crop-inspector.visible { display: block; animation: fadeUp 0.35s ease both; }
+    .crop-inspector-head {
+      display: flex; justify-content: space-between; font-size: 0.75rem;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .crop-canvas-wrap {
+      display: flex; justify-content: center; background: #04070d;
+      border-radius: 8px; padding: 8px; overflow: hidden;
+    }
+    #cropCanvas { max-width: 100%; max-height: 150px; }
+
+    .slider-row {
+      margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: var(--muted);
+    }
+    input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+
+    /* === انیمیشن‌های بخش نتایج (سمت چپ) === */
+    @keyframes plateReveal {
+      0% { opacity: 0; transform: translateY(12px) scale(0.92); filter: blur(4px); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+    }
+    @keyframes plateShine {
+      0% { transform: translateX(-140%) skewX(-22deg); }
+      100% { transform: translateX(260%) skewX(-22deg); }
+    }
+    @keyframes fadeUp {
+      0% { opacity: 0; transform: translateY(10px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes chipPop {
+      0% { opacity: 0; transform: translateY(8px) scale(0.85); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .plate-visual-wrap {
+      display: flex; justify-content: center; align-items: center;
+      padding: 22px 14px; margin-bottom: 16px;
+      background: rgba(7, 11, 20, 0.75); border: 1px solid var(--border);
+      border-radius: 14px; min-height: 116px;
+      position: relative; overflow: hidden;
+    }
+
+    .plate-animated {
+      position: relative;
+      overflow: hidden;
+      animation: plateReveal 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .plate-animated::after {
+      content: "";
+      position: absolute;
+      top: 0; bottom: 0; left: 0; width: 45%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+      pointer-events: none;
+      animation: plateShine 0.9s ease-out 0.25s 1 both;
+    }
+
+    .ir-plate {
+      display: inline-flex; direction: ltr; align-items: stretch;
+      height: 68px; min-width: 310px; max-width: 100%;
+      border-radius: 7px; border: 2.5px solid #1e293b; overflow: hidden;
+      background: #f8fafc; color: #0f172a;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55); font-weight: 800;
+    }
+    .ir-plate.theme-yellow { background: #facc15; color: #0f172a; }
+    .ir-plate.theme-red { background: #dc2626; color: #ffffff; }
+    .ir-plate.theme-green { background: #15803d; color: #ffffff; }
+    .ir-plate.theme-blue { background: #1d4ed8; color: #ffffff; }
+    .ir-plate.theme-tan { background: #d6c39b; color: #0f172a; }
+
+    .ir-strip {
+      width: 34px; background: #1d4ed8; color: #fff;
+      display: flex; flex-direction: column; justify-content: space-between;
+      align-items: center; padding: 6px 3px 4px; flex-shrink: 0;
+    }
+    .ir-flag { width: 22px; height: 13px; border-radius: 1px; overflow: hidden; display: flex; flex-direction: column; }
+    .ir-flag span { flex: 1; }
+    .ir-strip small { font-size: 0.45rem; line-height: 1.05; text-align: center; font-weight: 700; }
+    .ir-main {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 10px; padding: 0 14px; font-size: 1.65rem; letter-spacing: 1px;
+    }
+    .ir-letter { font-size: 1.5rem; padding: 0 2px; }
+    .ir-city {
+      width: 66px; border-left: 2px solid currentColor;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 2px 6px; flex-shrink: 0;
+    }
+    .ir-city span.label { font-size: 0.62rem; font-weight: 700; opacity: 0.85; line-height: 1; }
+    .ir-city span.num { font-size: 1.4rem; line-height: 1.15; }
+
+    .eu-plate {
+      display: inline-flex; direction: ltr; align-items: stretch;
+      height: 62px; min-width: 280px; border-radius: 6px;
+      border: 2.5px solid #1e293b; overflow: hidden;
+      background: #f8fafc; color: #0f172a; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    }
+    .eu-strip {
+      width: 34px; background: #1e40af; color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+      padding: 8px 2px 6px; font-size: 0.68rem; font-weight: 800;
+    }
+    .eu-ring { width: 16px; height: 16px; border-radius: 50%; border: 2px dotted #facc15; }
+    .eu-main {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 0 18px; font-size: 1.65rem; font-weight: 800; letter-spacing: 3px;
+      font-family: ui-monospace, 'Consolas', monospace;
+    }
+
+    .us-plate {
+      display: inline-flex; flex-direction: column; direction: ltr;
+      min-width: 210px; border-radius: 8px; border: 2.5px solid #334155; overflow: hidden;
+      background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+      color: #0f172a; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    }
+    .us-top {
+      background: #1e3a8a; color: #fff; text-align: center;
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 2.5px; padding: 3px 10px;
+    }
+    .us-main {
+      padding: 10px 20px; text-align: center; font-size: 1.7rem; font-weight: 800;
+      letter-spacing: 3px; font-family: ui-monospace, 'Consolas', monospace;
+    }
+
+    .unk-plate {
+      padding: 12px 22px; border-radius: 10px;
+      border: 1.5px dashed var(--err); background: var(--err-soft);
+      color: #fca5a5; font-size: 0.88rem; font-weight: 600;
+      animation: fadeUp 0.35s ease both;
+    }
+
+    /* کارت‌های متادیتا با انیمیشن ورود پلکانی */
+    .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+    .meta-box {
+      background: rgba(7, 11, 20, 0.68); border: 1px solid var(--border);
+      border-radius: 11px; padding: 10px 13px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    .meta-box:hover { border-color: rgba(59, 130, 246, 0.35); transform: translateY(-1px); }
+    .meta-box.pop { animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .meta-box small { display: block; font-size: 0.72rem; color: var(--muted); }
+    .meta-box strong { font-size: 0.88rem; font-weight: 700; }
+
+    .char-chips {
+      display: flex; flex-wrap: wrap; gap: 6px; direction: ltr;
+      justify-content: center; margin-bottom: 16px;
+    }
+    .chip {
+      background: rgba(7, 11, 20, 0.75); border: 1px solid var(--border);
+      border-radius: 9px; padding: 5px 10px; text-align: center; min-width: 46px;
+      animation: chipPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+    }
+    .chip:hover { transform: translateY(-2px); border-color: var(--cyan); }
+    .chip strong { display: block; font-size: 1rem; color: var(--text); }
+    .chip small { display: block; font-size: 0.66rem; color: var(--ok); }
+    .chip.low small { color: var(--warn); }
+
+    .bars { display: flex; flex-direction: column; gap: 9px; margin-bottom: 14px; }
+    .bar-head { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); margin-bottom: 3px; }
+    .bar-track { height: 6px; background: rgba(7, 11, 20, 0.9); border-radius: 99px; overflow: hidden; }
+    .bar-fill {
+      height: 100%; border-radius: 99px; transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      background: linear-gradient(90deg, #2563eb, #06b6d4);
+    }
+
+    .engine-note {
+      font-size: 0.75rem; color: var(--muted); padding: 10px 13px; border-radius: 10px;
+      background: rgba(7, 11, 20, 0.68); border: 1px solid var(--border);
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+    }
+
+    /* بخش نمونه پلاک‌ها */
+    .samples-card { margin-top: 22px; }
+    .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tab-btn {
+      padding: 5px 12px; font-size: 0.76rem; border-radius: 8px;
+      background: rgba(7, 11, 20, 0.6); border: 1px solid var(--border); color: var(--muted);
+    }
+    .tab-btn.active {
+      background: rgba(59, 130, 246, 0.18); border-color: var(--accent); color: var(--text);
+    }
+
+    .samples-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .sample-item {
+      background: rgba(7, 11, 20, 0.75);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: grab;
+      transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .sample-item:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+    }
+    .sample-item:active { cursor: grabbing; }
+    .sample-thumb { width: 100%; height: 84px; object-fit: cover; display: block; background: #04070d; }
+    .sample-info {
+      padding: 8px 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 6px;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .sample-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+    .sample-tag {
+      font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+      background: rgba(59, 130, 246, 0.15); color: #93c5fd;
+    }
+    .sample-tag.IRAN { background: var(--ok-soft); color: #6ee7b7; }
+    .sample-tag.US { background: rgba(168, 85, 247, 0.16); color: #d8b4fe; }
+    .sample-tag.EU { background: rgba(6, 182, 212, 0.16); color: #67e8f9; }
+
+    .samples-empty {
+      padding: 28px 16px; text-align: center; color: var(--muted); font-size: 0.82rem;
+      background: rgba(7, 11, 20, 0.5); border: 1px dashed var(--border); border-radius: 12px;
+    }
+    .samples-empty code {
+      display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 6px;
+      background: rgba(148, 163, 184, 0.1); color: var(--text); direction: ltr;
+    }
+
+    /* تاریخچه */
+    .history-card { margin-top: 22px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
+    th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.75rem; }
+    td.mono { font-weight: 700; letter-spacing: 0.4px; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+      background: rgba(59, 130, 246, 0.15); color: #93c5fd;
+    }
+    .badge.iran { background: var(--ok-soft); color: #6ee7b7; }
+    .badge.unknown { background: var(--err-soft); color: #fca5a5; }
+
+/* === پاپ‌آپ خوش‌آمدگویی با انیمیشن ورود نرم و پلکانی === */
+    @keyframes backdropIn {
+      0% { opacity: 0; backdrop-filter: blur(0px); }
+      100% { opacity: 1; backdrop-filter: blur(14px); }
+    }
+
+    @keyframes modalPopIn {
+      0% { opacity: 0; transform: translateY(28px) scale(0.92); filter: blur(6px); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+    }
+
+    @keyframes textRevealUp {
+      0% { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+      100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(4, 7, 15, 0.72);
+      backdrop-filter: blur(14px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 1;
+      animation: backdropIn 0.5s ease-out backwards;
+      transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .modal-backdrop.hidden { opacity: 0; pointer-events: none; }
+
+    .modal-box {
+      width: 100%; max-width: 540px;
+      position: relative;
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.22), transparent 52%),
+        radial-gradient(circle at bottom right, rgba(6, 182, 212, 0.18), transparent 52%),
+        linear-gradient(155deg, rgba(19, 28, 48, 0.96) 0%, rgba(10, 15, 28, 0.98) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.32);
+      border-radius: 26px;
+      padding: 34px 30px 28px;
+      box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.65),
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+      transform: translateY(0) scale(1);
+      animation: modalPopIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.08s backwards;
+      transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .modal-backdrop.hidden .modal-box { transform: translateY(16px) scale(0.95); }
+
+    .modal-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 13px; border-radius: 999px; font-size: 0.73rem; font-weight: 600;
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.2), rgba(6, 182, 212, 0.2));
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #7dd3fc; margin-bottom: 16px;
+      animation: textRevealUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.22s backwards;
+    }
+
+    .modal-box h2 {
+      font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;
+      background: linear-gradient(90deg, #ffffff, #bae6fd);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      animation: textRevealUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.34s backwards;
+    }
+
+    .modal-box p {
+      font-size: 0.86rem; color: #a3b3cc; margin-bottom: 22px; line-height: 1.75;
+      animation: textRevealUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.46s backwards;
+    }
+
+    .modal-features { display: grid; gap: 10px; margin-bottom: 26px; }
+    .modal-feat {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px; border-radius: 13px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      font-size: 0.82rem; color: var(--text);
+      animation: textRevealUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .modal-feat:nth-child(1) { animation-delay: 0.56s; }
+    .modal-feat:nth-child(2) { animation-delay: 0.66s; }
+    .modal-feat:nth-child(3) { animation-delay: 0.76s; }
+
+    .modal-feat-icon {
+      width: 30px; height: 30px; border-radius: 9px;
+      display: grid; place-items: center; flex-shrink: 0;
+      background: rgba(59, 130, 246, 0.16); color: #60a5fa;
+    }
+
+    .modal-actions {
+      display: flex; justify-content: flex-end;
+      animation: textRevealUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.86s backwards;
+    }
+
+    .btn-welcome {
+      position: relative;
+      overflow: hidden;
+      padding: 12px 28px;
+      border-radius: 14px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #ffffff;
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #06b6d4 100%);
+      background-size: 200% 200%;
+      box-shadow: 0 10px 28px rgba(59, 130, 246, 0.42);
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, background-position 0.4s ease;
+    }
+    .btn-welcome::before {
+      content: "";
+      position: absolute;
+      top: 0; bottom: 0; left: -120%; width: 70%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+      transform: skewX(-20deg);
+      transition: left 0.55s ease;
+    }
+    .btn-welcome:hover {
+      transform: translateY(-2px) scale(1.02);
+      background-position: 100% 50%;
+      box-shadow: 0 14px 34px rgba(6, 182, 212, 0.45);
+    }
+    .btn-welcome:hover::before { left: 160%; }
+    .btn-welcome:active { transform: translateY(0) scale(0.99); }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <!-- طرح‌های پلاک متحرک در پس‌زمینه -->
+  <div class="bg-plates" aria-hidden="true">
+    <div class="float-plate fp-1">
+      <div class="fp-strip">IR</div>
+      <div class="fp-body"><span>18 ب 452</span><span class="fp-city">18</span></div>
+    </div>
+    <div class="float-plate fp-2">
+      <div class="fp-strip">EU</div>
+      <div class="fp-body"><span>M · AB 2048</span></div>
+    </div>
+    <div class="float-plate fp-3">
+      <div class="fp-strip">US</div>
+      <div class="fp-body"><span>7TRJ842</span></div>
+    </div>
+    <div class="float-plate fp-4">
+      <div class="fp-strip">IR</div>
+      <div class="fp-body"><span>64 س 819</span><span class="fp-city">22</span></div>
+    </div>
+    <div class="float-plate fp-5">
+      <div class="fp-strip">EU</div>
+      <div class="fp-body"><span>B · AI 900</span></div>
+    </div>
+  </div>
+
+  <!-- پاپ‌آپ خوش‌آمدگویی -->
+  <div id="welcomeModal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-badge">نسخه آفلاین · PyTorch + YOLOv8</div>
+      <h2>به پلتفرم هوشمند تشخیص پلاک خوش آمدید</h2>
+      <p>
+        این سامانه به‌صورت کاملاً محلی منطقه پلاک (ایران، آمریکا، اروپا) را شناسایی کرده،
+        کاراکترها را با دقت بالا استخراج می‌کند و پلاک را به همراه اطلاعات استان و کاربری بازسازی می‌نماید.
+      </p>
+      <div class="modal-features">
+        <div class="modal-feat">
+          <div class="modal-feat-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+          </div>
+          <span>تشخیص تک‌تک کاراکترهای پلاک ایرانی با مدل اختصاصی YOLOv8</span>
+        </div>
+        <div class="modal-feat">
+          <div class="modal-feat-icon" style="background:rgba(6,182,212,0.16); color:#22d3ee;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <span>امکان آپلود مستقیم، وب‌کم زنده و تست سریع با گالری نمونه پلاک‌ها</span>
+        </div>
+        <div class="modal-feat">
+          <div class="modal-feat-icon" style="background:rgba(16,185,129,0.16); color:#34d399;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <span>ثبت تاریخچه اسکن‌ها و خروجی فوری فایل اکسل (CSV)</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnStartApp" class="btn-welcome" type="button">
+          ورود به سامانه
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="18" y2="12"/></svg>
+        </div>
+        <div>
+          <h1>ALPR Studio — سامانه هوشمند تشخیص و خوانش پلاک</h1>
+          <small>PyTorch + YOLOv8 Character Engine + Offline Region Classifier</small>
+        </div>
+      </div>
+      <div class="pills">
+        <div class="pill"><span id="dot-torch" class="dot"></span><span id="txt-torch">PyTorch...</span></div>
+        <div class="pill"><span id="dot-tm" class="dot"></span><span id="txt-tm">مدل منطقه...</span></div>
+        <div class="pill"><span id="dot-yolo" class="dot"></span><span id="txt-yolo">YOLO کاراکتر...</span></div>
+        <div class="pill"><span id="dot-det" class="dot"></span><span id="txt-det">برش خودکار...</span></div>
+      </div>
+    </header>
+
+    <div class="main-grid">
+      <!-- ستون ورودی -->
+      <section class="card">
+        <div class="card-head">
+          <span class="card-title">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            ورودی تصویر یا دوربین زنده
+          </span>
+          <div class="btn-group">
+            <button id="btnWebcam" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              دوربین زنده
+            </button>
+            <button id="btnClear" type="button">پاک‌سازی</button>
+          </div>
+        </div>
+
+        <div id="dropzone" class="dropzone">
+          <div class="dropzone-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <strong>تصویر پلاک را اینجا رها کنید یا کلیک کنید</strong>
+          <p>همچنین می‌توانید هر کارت از بخش «نمونه پلاک‌ها» را مستقیم به این کادر بکشید</p>
+          <input id="fileInput" type="file" accept="image/*" hidden />
+        </div>
+
+        <div id="stage" class="stage">
+          <div class="scan-line"></div>
+          <span id="stageEmpty" class="stage-empty">در انتظار انتخاب تصویر، درگ از نمونه‌ها یا فعال‌سازی دوربین</span>
+          <canvas id="mainCanvas"></canvas>
+          <video id="webcamVideo" autoplay playsinline></video>
+        </div>
+
+        <div id="webcamBar" class="webcam-bar">
+          <button id="btnCapture" class="primary" type="button">ثبت فریم و اسکن پلاک</button>
+          <button id="btnStopCam" type="button">توقف دوربین</button>
+        </div>
+
+        <div id="cropInspector" class="crop-inspector">
+          <div class="crop-inspector-head">
+            <span>بزرگ‌نمایی پلاک و کادر کاراکترها</span>
+            <span id="cropMeta">—</span>
+          </div>
+          <div class="crop-canvas-wrap">
+            <canvas id="cropCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <span>آستانه رد پلاک ناشناخته (Unknown):</span>
+          <input id="thresholdSlider" type="range" min="50" max="98" value="80" />
+          <strong id="thresholdVal">80%</strong>
+        </div>
+      </section>
+
+      <!-- ستون خروجی -->
+      <section class="card">
+        <div class="card-head">
+          <span class="card-title">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            خروجی نهایی و بازسازی گرافیکی پلاک
+          </span>
+          <span id="timePill" class="pill" style="padding:3px 10px;">0 ms</span>
+        </div>
+
+        <div id="plateVisual" class="plate-visual-wrap">
+          <span class="stage-empty">پلاک پس از اسکن به‌صورت گرافیکی نمایش داده می‌شود</span>
+        </div>
+
+        <div class="meta-grid" id="metaGrid">
+          <div class="meta-box">
+            <small>منطقه و کشور</small>
+            <strong id="metaRegion">—</strong>
+          </div>
+          <div class="meta-box">
+            <small>استان / حوزه</small>
+            <strong id="metaProvince">—</strong>
+          </div>
+          <div class="meta-box">
+            <small>نوع پلاک / کاربری</small>
+            <strong id="metaType">—</strong>
+          </div>
+          <div class="meta-box">
+            <small>میانگین اطمینان خوانش</small>
+            <strong id="metaConf">—</strong>
+          </div>
+        </div>
+
+        <div id="charChips" class="char-chips"></div>
+
+        <div class="card-title" style="margin-bottom:8px; font-size:0.82rem; color:var(--muted);">احتمال کلاس‌های منطقه‌ای</div>
+        <div id="barsContainer" class="bars">
+          <div style="font-size:0.8rem; color:var(--muted);">در انتظار پردازش تصویر...</div>
+        </div>
+
+        <div class="engine-note">
+          <span id="engineName">موتور خوانش: آماده</span>
+          <span id="engineMsg">—</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- بخش نمونه پلاک‌ها -->
+    <section class="card samples-card">
+      <div class="card-head">
+        <span class="card-title">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          نمونه پلاک‌ها (کلیک کنید یا به کادر بالا بکشید)
+        </span>
+        <div class="filter-tabs" id="sampleFilters">
+          <button class="tab-btn active" data-filter="ALL" type="button">همه</button>
+          <button class="tab-btn" data-filter="IRAN" type="button">ایران</button>
+          <button class="tab-btn" data-filter="US" type="button">آمریکا</button>
+          <button class="tab-btn" data-filter="EU" type="button">اروپا</button>
+        </div>
+      </div>
+      <div id="samplesContainer"></div>
+    </section>
+
+    <!-- جدول تاریخچه -->
+    <section class="card history-card">
+      <div class="card-head">
+        <span class="card-title">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          تاریخچه اسکن‌های این نشست (<span id="historyCount">0</span>)
+        </span>
+        <div class="btn-group">
+          <button id="btnExportCsv" type="button" disabled>خروجی Excel (CSV)</button>
+          <button id="btnClearHistory" type="button">حذف تاریخچه</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>زمان</th>
+              <th>منطقه</th>
+              <th>متن پلاک</th>
+              <th>استان / حوزه</th>
+              <th>کاربری</th>
+              <th>اطمینان</th>
+              <th>زمان پردازش</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="7" style="text-align:center; color:var(--muted);">هنوز پلاکی ثبت نشده است.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let tmModel = null;
+    let webcamStream = null;
+    let currentCropBlob = null;
+    let currentCropImg = null;
+    let lastPredictions = null;
+    let scanHistory = [];
+    let allSamples = [];
+    let activeFilter = 'ALL';
+
+    const welcomeModal = document.getElementById('welcomeModal');
+    const stage = document.getElementById('stage');
+    const stageEmpty = document.getElementById('stageEmpty');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const mainCtx = mainCanvas.getContext('2d');
+    const cropCanvas = document.getElementById('cropCanvas');
+    const cropCtx = cropCanvas.getContext('2d');
+    const cropInspector = document.getElementById('cropInspector');
+    const videoEl = document.getElementById('webcamVideo');
+    const webcamBar = document.getElementById('webcamBar');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdVal = document.getElementById('thresholdVal');
+
+    const REGION_LABELS = {
+      IRAN: 'ایران (IRAN)',
+      US: 'آمریکا (US)',
+      EU: 'اروپا (EU)',
+      EUROPE: 'اروپا (EU)',
+      UNKNOWN: 'ناشناخته (UNKNOWN)'
+    };
+
+    const FA_DIGITS = {'0':'۰','1':'۱','2':'۲','3':'۳','4':'۴','5':'۵','6':'۶','7':'۷','8':'۸','9':'۹'};
+    const toFaDigits = s => String(s || '').replace(/\d/g, d => FA_DIGITS[d]);
+
+    document.getElementById('btnStartApp').addEventListener('click', () => {
+      welcomeModal.classList.add('hidden');
+    });
+    welcomeModal.addEventListener('click', e => {
+      if (e.target === welcomeModal) welcomeModal.classList.add('hidden');
+    });
+
+    function setPill(dotId, txtId, state, text) {
+      const dot = document.getElementById(dotId);
+      dot.className = 'dot' + (state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
+      document.getElementById(txtId).textContent = text;
+    }
+
+    function base64ToArrayBuffer(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    async function loadOfflineTMModel() {
+      if (typeof tf === 'undefined') throw new Error('tf.min.js یافت نشد');
+      await tf.ready();
+      const resp = await fetch('/api/tm-bundle', { cache: 'no-store' });
+      const bundle = await resp.json();
+      if (!resp.ok) throw new Error(bundle.detail || 'خطا در دریافت مدل');
+
+      const modelJSON = bundle.modelJSON;
+      const metadata = bundle.metadata || {};
+      const weightSpecs = [];
+      for (const g of (modelJSON.weightsManifest || [])) weightSpecs.push(...(g.weights || []));
+
+      const artifacts = {
+        modelTopology: modelJSON.modelTopology,
+        format: modelJSON.format,
+        generatedBy: modelJSON.generatedBy,
+        convertedBy: modelJSON.convertedBy,
+        weightSpecs,
+        weightData: base64ToArrayBuffer(bundle.weightDataBase64)
+      };
+      if (modelJSON.trainingConfig) artifacts.trainingConfig = modelJSON.trainingConfig;
+
+      const model = await tf.loadLayersModel(tf.io.fromMemory(artifacts));
+      const labels = metadata.labels || [];
+      const size = metadata.imageSize || 224;
+
+      return {
+        async predict(img) {
+          const off = document.createElement('canvas');
+          off.width = size; off.height = size;
+          const octx = off.getContext('2d');
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
+          const m = Math.min(w, h);
+          octx.drawImage(img, (w - m) / 2, (h - m) / 2, m, m, 0, 0, size, size);
+
+          const out = tf.tidy(() => {
+            const t = tf.browser.fromPixels(off).toFloat().div(127.5).sub(1);
+            return model.predict(t.expandDims(0));
+          });
+          const probs = await out.data();
+          out.dispose();
+          return labels.map((className, i) => ({ className, probability: probs[i] }));
+        }
+      };
+    }
+
+    async function loadSamples() {
+      try {
+        const resp = await fetch('/api/samples', { cache: 'no-store' });
+        const data = await resp.json();
+        allSamples = data.samples || [];
+        renderSamples();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderSamples() {
+      const container = document.getElementById('samplesContainer');
+      const list = activeFilter === 'ALL'
+        ? allSamples
+        : allSamples.filter(s => s.category === activeFilter);
+
+      if (!list.length) {
+        container.innerHTML = `
+          <div class="samples-empty">
+            تصویری در این دسته‌بندی یافت نشد. عکس‌های نمونه خود را در پوشه‌های زیر قرار دهید و صفحه را رفرش کنید:<br>
+            <code>plate_platform/samples/iran</code> &nbsp;
+            <code>plate_platform/samples/us</code> &nbsp;
+            <code>plate_platform/samples/eu</code>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = `<div class="samples-grid">${list.map(s => `
+        <div class="sample-item" draggable="true" data-url="${s.url}" title="کلیک کنید یا به کادر آپلود بکشید">
+          <img class="sample-thumb" src="${s.url}" alt="${s.name}" loading="lazy" />
+          <div class="sample-info">
+            <span class="sample-name">${s.name}</span>
+            <span class="sample-tag ${s.category}">${s.category}</span>
+          </div>
+        </div>`).join('')}</div>`;
+
+      container.querySelectorAll('.sample-item').forEach(card => {
+        const url = card.dataset.url;
+        card.addEventListener('click', () => testSampleUrl(url));
+        card.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('text/sample-url', url);
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+      });
+    }
+
+    async function testSampleUrl(url) {
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        await processInputBlob(blob);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    document.getElementById('sampleFilters').addEventListener('click', e => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      renderSamples();
+    });
+
+    async function init() {
+      loadSamples();
+      try {
+        const info = await (await fetch('/api/status', { cache: 'no-store' })).json();
+        setPill('dot-torch', 'txt-torch', 'ok',
+          `PyTorch ${info.torch_version} (${info.cuda_available ? 'GPU' : 'CPU'})`);
+        setPill('dot-yolo', 'txt-yolo', info.iran_char_yolo_ready ? 'ok' : 'warn',
+          info.iran_char_yolo_ready ? 'YOLO کاراکتر ایران: فعال' : 'YOLO ایران: غیرفعال');
+        setPill('dot-det', 'txt-det', info.plate_detector_ready ? 'ok' : 'warn',
+          info.plate_detector_ready ? 'برش خودکار: فعال' : 'حالت: پلاک برش‌خورده');
+
+        if (!info.tm_ready) {
+          setPill('dot-tm', 'txt-tm', 'err', 'فایل‌های مدل در پوشه model نیستند');
+          return;
+        }
+      } catch (e) {
+        setPill('dot-torch', 'txt-torch', 'err', 'عدم اتصال به بک‌اند');
+        return;
+      }
+
+      try {
+        tmModel = await loadOfflineTMModel();
+        setPill('dot-tm', 'txt-tm', 'ok', 'مدل منطقه آماده');
+      } catch (e) {
+        setPill('dot-tm', 'txt-tm', 'err', 'خطای مدل: ' + e.message);
+      }
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+
+    function drawMainImage(img, plateBbox = null) {
+      mainCanvas.width = img.naturalWidth;
+      mainCanvas.height = img.naturalHeight;
+      mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+      mainCtx.drawImage(img, 0, 0);
+
+      if (plateBbox) {
+        const [x1, y1, x2, y2] = plateBbox;
+        mainCtx.strokeStyle = '#10b981';
+        mainCtx.lineWidth = Math.max(3, Math.round(mainCanvas.width / 160));
+        mainCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      }
+      stageEmpty.style.display = 'none';
+      videoEl.style.display = 'none';
+      mainCanvas.style.display = 'block';
+    }
+
+    function drawCropWithChars(img, chars = []) {
+      cropCanvas.width = img.naturalWidth;
+      cropCanvas.height = img.naturalHeight;
+      cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+      cropCtx.drawImage(img, 0, 0);
+
+      const lw = Math.max(2, Math.round(cropCanvas.width / 220));
+      cropCtx.lineWidth = lw;
+      for (const c of chars) {
+        if (!c.box || c.box.length < 4) continue;
+        const [x1, y1, x2, y2] = c.box;
+        cropCtx.strokeStyle = c.conf >= 0.7 ? '#10b981' : '#f59e0b';
+        cropCtx.fillStyle = c.conf >= 0.7 ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)';
+        cropCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+        cropCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      }
+      cropInspector.classList.add('visible');
+    }
+
+    function animateMetaBoxes() {
+      const boxes = document.querySelectorAll('#metaGrid .meta-box');
+      boxes.forEach((box, idx) => {
+        box.classList.remove('pop');
+        void box.offsetWidth;
+        box.style.animationDelay = `${idx * 65}ms`;
+        box.classList.add('pop');
+      });
+    }
+
+    function renderGraphicalPlate(regionKey, data) {
+      const wrap = document.getElementById('plateVisual');
+
+      if (regionKey === 'UNKNOWN' || data.status === 'unknown') {
+        wrap.innerHTML = `<div class="unk-plate">پلاک ناشناخته — قابل پردازش نیست</div>`;
+        return;
+      }
+
+      if (regionKey === 'IRAN') {
+        const p = data.parts || {};
+        const hasStructured = p.p1 || p.letter || p.p2 || p.city;
+        const themeClass = `theme-${data.theme || 'white'}`;
+
+        if (hasStructured) {
+          wrap.innerHTML = `
+            <div class="ir-plate plate-animated ${themeClass}">
+              <div class="ir-strip">
+                <div class="ir-flag">
+                  <span style="background:#16a34a"></span>
+                  <span style="background:#ffffff"></span>
+                  <span style="background:#dc2626"></span>
+                </div>
+                <small>I.R.<br>IRAN</small>
+              </div>
+              <div class="ir-main">
+                <span>${toFaDigits(p.p1 || '??')}</span>
+                <span class="ir-letter">${p.letter || '?'}</span>
+                <span>${toFaDigits(p.p2 || '???')}</span>
+              </div>
+              <div class="ir-city">
+                <span class="label">ایران</span>
+                <span class="num">${toFaDigits(p.city || '??')}</span>
+              </div>
+            </div>`;
+        } else {
+          wrap.innerHTML = `
+            <div class="ir-plate plate-animated ${themeClass}">
+              <div class="ir-strip">
+                <div class="ir-flag">
+                  <span style="background:#16a34a"></span>
+                  <span style="background:#ffffff"></span>
+                  <span style="background:#dc2626"></span>
+                </div>
+                <small>I.R.<br>IRAN</small>
+              </div>
+              <div class="ir-main" style="font-size:1.3rem;">${toFaDigits(data.text || 'خوانده نشد')}</div>
+            </div>`;
+        }
+        return;
+      }
+
+      if (regionKey === 'US') {
+        wrap.innerHTML = `
+          <div class="us-plate plate-animated">
+            <div class="us-top">UNITED STATES</div>
+            <div class="us-main">${data.text || '—'}</div>
+          </div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="eu-plate plate-animated">
+          <div class="eu-strip"><span class="eu-ring"></span><span>EU</span></div>
+          <div class="eu-main">${data.text || '—'}</div>
+        </div>`;
+    }
+
+    function renderCharChips(chars = []) {
+      const box = document.getElementById('charChips');
+      if (!chars.length) { box.innerHTML = ''; return; }
+      box.innerHTML = chars.map((c, idx) => {
+        const pct = Math.round(c.conf * 100);
+        return `<div class="chip ${pct < 70 ? 'low' : ''}" style="animation-delay:${idx * 55}ms"><strong>${c.char}</strong><small>${pct}%</small></div>`;
+      }).join('');
+    }
+
+    function renderBars(predictions) {
+      const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+      document.getElementById('barsContainer').innerHTML = sorted.map(p => {
+        const pct = (p.probability * 100).toFixed(1);
+        return `
+          <div>
+            <div class="bar-head"><span>${p.className}</span><span>${pct}%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+      }).join('');
+      return sorted[0];
+    }
+
+    function addHistoryEntry(regionKey, data, totalMs) {
+      const timeStr = new Date().toLocaleTimeString('fa-IR');
+      scanHistory.unshift({
+        time: timeStr,
+        region: regionKey,
+        text: data.text || 'ناشناخته',
+        province: data.province || '—',
+        type: data.plate_type || '—',
+        conf: data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '—',
+        ms: `${Math.round(totalMs)} ms`
+      });
+      if (scanHistory.length > 50) scanHistory.pop();
+
+      document.getElementById('historyCount').textContent = scanHistory.length;
+      document.getElementById('btnExportCsv').disabled = false;
+      document.getElementById('historyBody').innerHTML = scanHistory.map(row => {
+        const cls = row.region === 'IRAN' ? 'iran' : (row.region === 'UNKNOWN' ? 'unknown' : '');
+        return `
+          <tr>
+            <td>${row.time}</td>
+            <td><span class="badge ${cls}">${row.region}</span></td>
+            <td class="mono">${row.text}</td>
+            <td>${row.province}</td>
+            <td>${row.type}</td>
+            <td>${row.conf}</td>
+            <td>${row.ms}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    async function classifyAndAnalyze(addLog = true) {
+      if (!tmModel || !currentCropImg || !currentCropBlob) return;
+      const tStart = performance.now();
+      stage.classList.add('scanning');
+
+      try {
+        lastPredictions = await tmModel.predict(currentCropImg);
+        const top = renderBars(lastPredictions);
+        const threshold = Number(thresholdSlider.value) / 100;
+        const detectedKey = top.probability >= threshold ? top.className.toUpperCase() : 'UNKNOWN';
+
+        document.getElementById('metaRegion').textContent =
+          `${REGION_LABELS[detectedKey] || detectedKey} (${(top.probability * 100).toFixed(1)}%)`;
+
+        const fd = new FormData();
+        fd.append('file', currentCropBlob, 'plate.jpg');
+        fd.append('region', detectedKey);
+
+        const resp = await fetch('/api/analyze', { method: 'POST', body: fd });
+        const data = await resp.json();
+        const totalMs = performance.now() - tStart;
+
+        drawCropWithChars(currentCropImg, data.chars || []);
+        renderGraphicalPlate(detectedKey, data);
+        renderCharChips(data.chars || []);
+
+        document.getElementById('metaProvince').textContent = data.province || '—';
+        document.getElementById('metaType').textContent = data.plate_type || '—';
+        document.getElementById('metaConf').textContent =
+          data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '—';
+        document.getElementById('engineName').textContent = `موتور: ${data.engine}`;
+        document.getElementById('engineMsg').textContent = data.message || '';
+        document.getElementById('timePill').textContent = `${Math.round(totalMs)} ms`;
+
+        animateMetaBoxes();
+
+        if (addLog) addHistoryEntry(detectedKey, data, totalMs);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('engineMsg').textContent = 'خطا در ارتباط با سرور';
+      } finally {
+        stage.classList.remove('scanning');
+      }
+    }
+
+    async function processInputBlob(blob) {
+      if (!blob) return;
+      stage.classList.add('scanning');
+
+      try {
+        const objUrl = URL.createObjectURL(blob);
+        const fullImg = await loadImage(objUrl);
+        URL.revokeObjectURL(objUrl);
+
+        const fd = new FormData();
+        fd.append('file', blob, 'input.jpg');
+        const detResp = await fetch('/api/detect-plate', { method: 'POST', body: fd });
+        const detData = await detResp.json();
+
+        drawMainImage(fullImg, detData.detected ? detData.bbox : null);
+        document.getElementById('cropMeta').textContent = detData.detected
+          ? `برش خودکار YOLO (اطمینان ${(detData.plate_conf * 100).toFixed(1)}%)`
+          : 'تصویر مستقیم پلاک';
+
+        currentCropImg = await loadImage(detData.crop_data_url);
+        currentCropBlob = await (await fetch(detData.crop_data_url)).blob();
+        drawCropWithChars(currentCropImg, []);
+
+        await classifyAndAnalyze(true);
+      } catch (err) {
+        console.error(err);
+        stage.classList.remove('scanning');
+      }
+    }
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) processInputBlob(e.target.files[0]);
+    });
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      const sampleUrl = e.dataTransfer.getData('text/sample-url');
+      if (sampleUrl) {
+        testSampleUrl(sampleUrl);
+        return;
+      }
+      if (e.dataTransfer.files[0]) processInputBlob(e.dataTransfer.files[0]);
+    });
+
+    thresholdSlider.addEventListener('input', () => {
+      thresholdVal.textContent = `${thresholdSlider.value}%`;
+    });
+    thresholdSlider.addEventListener('change', () => {
+      if (lastPredictions) classifyAndAnalyze(false);
+    });
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream = null;
+      }
+      videoEl.style.display = 'none';
+      webcamBar.classList.remove('active');
+    }
+
+    document.getElementById('btnWebcam').addEventListener('click', async () => {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        videoEl.srcObject = webcamStream;
+        mainCanvas.style.display = 'none';
+        stageEmpty.style.display = 'none';
+        videoEl.style.display = 'block';
+        webcamBar.classList.add('active');
+      } catch (e) {
+        alert('دسترسی به دوربین ممکن نیست: ' + e.message);
+      }
+    });
+
+    document.getElementById('btnStopCam').addEventListener('click', () => {
+      stopWebcam();
+      stageEmpty.style.display = 'block';
+    });
+
+    document.getElementById('btnCapture').addEventListener('click', () => {
+      if (!videoEl.videoWidth) return;
+      const tmp = document.createElement('canvas');
+      tmp.width = videoEl.videoWidth;
+      tmp.height = videoEl.videoHeight;
+      tmp.getContext('2d').drawImage(videoEl, 0, 0);
+      stopWebcam();
+      tmp.toBlob(blob => processInputBlob(blob), 'image/jpeg', 0.95);
+    });
+
+    document.getElementById('btnClear').addEventListener('click', () => {
+      stopWebcam();
+      mainCanvas.style.display = 'none';
+      stageEmpty.style.display = 'block';
+      cropInspector.classList.remove('visible');
+      currentCropBlob = null;
+      currentCropImg = null;
+      lastPredictions = null;
+      fileInput.value = '';
+      document.getElementById('plateVisual').innerHTML =
+        '<span class="stage-empty">پلاک پس از اسکن به‌صورت گرافیکی نمایش داده می‌شود</span>';
+      document.getElementById('charChips').innerHTML = '';
+      ['metaRegion','metaProvince','metaType','metaConf'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
+    });
+
+    document.getElementById('btnClearHistory').addEventListener('click', () => {
+      scanHistory = [];
+      document.getElementById('historyCount').textContent = '0';
+      document.getElementById('btnExportCsv').disabled = true;
+      document.getElementById('historyBody').innerHTML =
+        '<tr><td colspan="7" style="text-align:center; color:var(--muted);">هنوز پلاکی ثبت نشده است.</td></tr>';
+    });
+
+    document.getElementById('btnExportCsv').addEventListener('click', () => {
+      const header = ['زمان', 'منطقه', 'متن پلاک', 'استان', 'کاربری', 'اطمینان', 'زمان پردازش'];
+      const rows = scanHistory.map(r => [r.time, r.region, r.text, r.province, r.type, r.conf, r.ms]);
+      const csvContent = '\uFEFF' + [header, ...rows]
+        .map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `alpr_report_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    init();
+  </script>
+</body>
+</html>
