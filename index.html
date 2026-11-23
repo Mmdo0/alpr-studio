@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ALPR Studio — سامانه هوشمند تشخیص و خوانش پلاک</title>
-  <script src="./static/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="./static/tf.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js" async></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" async></script>
   <style>
     :root {
       --bg: #05080f;
@@ -270,7 +270,6 @@
     .badge.iran { background: var(--ok-soft); color: #6ee7b7; }
     .badge.unknown { background: var(--err-soft); color: #fca5a5; }
 
-    /* پاپ‌آپ خوش‌آمدگویی با انیمیشن ورود نرم و پلکانی */
     @keyframes backdropIn { 0% { opacity: 0; backdrop-filter: blur(0px); } 100% { opacity: 1; backdrop-filter: blur(14px); } }
     @keyframes modalPopIn { 0% { opacity: 0; transform: translateY(28px) scale(0.92); filter: blur(6px); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
     @keyframes textRevealUp { 0% { opacity: 0; transform: translateY(16px); filter: blur(4px); } 100% { opacity: 1; transform: translateY(0); filter: blur(0); } }
@@ -391,7 +390,7 @@
       </div>
 
       <div class="modal-regions">
-        <button type="button" class="region-pick" data-pick="IRAN">
+        <button type="button" class="region-pick" data-pick="IRAN" onclick="pickRegion('IRAN')">
           <svg class="region-flag" viewBox="0 0 36 24">
             <rect width="36" height="8" fill="#239f40"/>
             <rect y="8" width="36" height="8" fill="#ffffff"/>
@@ -401,7 +400,7 @@
           <span>پلاک ایران</span>
         </button>
 
-        <button type="button" class="region-pick" data-pick="US">
+        <button type="button" class="region-pick" data-pick="US" onclick="pickRegion('US')">
           <svg class="region-flag" viewBox="0 0 36 24">
             <rect width="36" height="24" fill="#ffffff"/>
             <path d="M0 0h36v2H0zm0 4h36v2H0zm0 4h36v2H0zm0 4h36v2H0zm0 4h36v2H0zm0 4h36v2H0z" fill="#b22234"/>
@@ -410,7 +409,7 @@
           <span>پلاک آمریکا</span>
         </button>
 
-        <button type="button" class="region-pick" data-pick="EU">
+        <button type="button" class="region-pick" data-pick="EU" onclick="pickRegion('EU')">
           <svg class="region-flag" viewBox="0 0 36 24">
             <rect width="36" height="24" fill="#003399"/>
             <circle cx="18" cy="12" r="6.5" fill="none" stroke="#ffcc00" stroke-width="1.8" stroke-dasharray="1.6 1.8"/>
@@ -420,7 +419,7 @@
       </div>
 
       <div class="modal-actions">
-        <button id="btnStartApp" class="btn-welcome" type="button">
+        <button id="btnStartApp" class="btn-welcome" type="button" onclick="pickRegion('ALL')">
           ورود به سامانه (همه پلاک‌ها)
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         </button>
@@ -564,24 +563,6 @@
   </div>
 
   <script>
-    function pickRegion(filter) {
-      const modal = document.getElementById('welcomeModal');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-      }
-      if (filter && filter !== 'ALL') {
-        activeFilter = filter;
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.filter === filter);
-        });
-        if (typeof renderSamples === 'function') renderSamples();
-      }
-    }
-    if (typeof ort !== 'undefined') {
-      ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
-    }
-
     let tmModel = null;
     let yoloSession = null;
     let yoloClasses = {};
@@ -603,6 +584,39 @@
     const fileInput = document.getElementById('fileInput');
     const thresholdSlider = document.getElementById('thresholdSlider');
     const thresholdVal = document.getElementById('thresholdVal');
+
+    function pickRegion(filter) {
+      const selected = filter || 'ALL';
+      activeFilter = selected;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.filter === selected);
+      });
+      renderSamples();
+      if (welcomeModal) {
+        welcomeModal.classList.add('hidden');
+        setTimeout(() => { welcomeModal.style.display = 'none'; }, 350);
+      }
+    }
+
+    welcomeModal.addEventListener('click', e => {
+      if (e.target === welcomeModal) pickRegion('ALL');
+    });
+
+    function waitForGlobal(name, timeoutMs = 15000) {
+      return new Promise((resolve, reject) => {
+        if (window[name]) return resolve(window[name]);
+        const start = Date.now();
+        const timer = setInterval(() => {
+          if (window[name]) {
+            clearInterval(timer);
+            resolve(window[name]);
+          } else if (Date.now() - start > timeoutMs) {
+            clearInterval(timer);
+            reject(new Error(`Timeout waiting for ${name}`));
+          }
+        }, 120);
+      });
+    }
 
     const REGION_LABELS = { IRAN: 'ایران (IRAN)', US: 'آمریکا (US)', EU: 'اروپا (EU)', EUROPE: 'اروپا (EU)', UNKNOWN: 'ناشناخته (UNKNOWN)' };
     const FA_DIGITS = {'0':'۰','1':'۱','2':'۲','3':'۳','4':'۴','5':'۵','6':'۶','7':'۷','8':'۸','9':'۹'};
@@ -646,27 +660,13 @@
       'ف': { type: 'ستاد کل نیروهای مسلح', theme: 'blue' }
     };
 
-    document.getElementById('btnStartApp').addEventListener('click', () => welcomeModal.classList.add('hidden'));
-    welcomeModal.addEventListener('click', e => { if (e.target === welcomeModal) welcomeModal.classList.add('hidden'); });
-
-    document.querySelectorAll('.region-pick').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const filter = btn.dataset.pick;
-        activeFilter = filter;
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.filter === filter);
-        });
-        renderSamples();
-        welcomeModal.classList.add('hidden');
-      });
-    });
-
     function setPill(dotId, txtId, state, text) {
       document.getElementById(dotId).className = 'dot' + (state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
       document.getElementById(txtId).textContent = text;
     }
 
     async function loadTMModel() {
+      await waitForGlobal('tf');
       await tf.ready();
       const metaResp = await fetch('./model/metadata.json');
       const metadata = await metaResp.json();
@@ -694,6 +694,8 @@
     }
 
     async function loadYoloModel() {
+      await waitForGlobal('ort');
+      ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
       const clsResp = await fetch('./model/yolo_classes.json');
       yoloClasses = await clsResp.json();
       yoloSession = await ort.InferenceSession.create('./model/iran_char_yolo.onnx', { executionProviders: ['wasm'] });
@@ -760,4 +762,368 @@
         const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
         const areaA = (a[2] - a[0]) * (a[3] - a[1]);
         const areaB = (b[2] - b[0]) * (b[3] - b[1]);
-        return inter /
+        return inter / (areaA + areaB - inter + 1e-6);
+      };
+      for (const b of boxes) {
+        if (!kept.some(k => iou(k.box, b.box) > 0.45)) kept.push(b);
+      }
+
+      kept.sort((a, b) => a.cx - b.cx);
+      const avgConf = kept.length ? kept.reduce((s, c) => s + c.conf, 0) / kept.length : 0;
+
+      const charsList = kept.map(k => k.char);
+      let letterIdx = charsList.findIndex(ch => !/^\d$/.test(ch));
+      let parts = {}, province = 'نامشخص', plate_type = 'شخصی', theme = 'white';
+
+      if (letterIdx >= 1 && charsList.length >= 6) {
+        const p1 = charsList.slice(0, letterIdx).join('').slice(-2);
+        const letter = charsList[letterIdx];
+        const rest = charsList.slice(letterIdx + 1).filter(c => /^\d$/.test(c));
+        const p2 = rest.slice(0, 3).join('');
+        const city = rest.slice(3, 5).join('');
+        parts = { p1, letter, p2, city };
+        if (PROVINCES[city]) province = PROVINCES[city];
+        if (LETTER_META[letter]) { plate_type = LETTER_META[letter].type; theme = LETTER_META[letter].theme; }
+      }
+
+      const text = parts.p1 ? `${parts.p1} ${parts.letter} ${parts.p2} | ایران ${parts.city || '??'}` : charsList.join(' ');
+      return { text, parts, chars: kept, confidence: avgConf, province, plate_type, theme, engine: 'YOLOv8 ONNX (Browser)', message: `${kept.length} کاراکتر شناسایی شد` };
+    }
+
+    function preprocessForForeignOCR(img) {
+      const scale = img.naturalWidth < 600 ? 2 : 1;
+      const w = img.naturalWidth * scale;
+      const h = img.naturalHeight * scale;
+      const off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      const ctx = off.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+      const contrast = 1.6;
+      const intercept = 128 * (1 - contrast);
+
+      for (let i = 0; i < d.length; i += 4) {
+        let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        gray = Math.max(0, Math.min(255, gray * contrast + intercept));
+        d[i] = d[i + 1] = d[i + 2] = gray;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return off;
+    }
+
+    async function runForeignOCR(img, regionKey) {
+      await waitForGlobal('Tesseract');
+      const processedCanvas = preprocessForForeignOCR(img);
+      const { data } = await Tesseract.recognize(processedCanvas, 'eng', {
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- '
+      });
+      const lines = (data.text || '').split('\n')
+        .map(l => l.toUpperCase().replace(/[^A-Z0-9 -]/g, '').trim())
+        .filter(l => l.length >= 3);
+      const bestLine = lines.sort((a, b) => b.length - a.length)[0] || '';
+
+      return {
+        text: bestLine || 'خوانده نشد',
+        chars: [],
+        confidence: (data.confidence || 0) / 100,
+        province: regionKey === 'US' ? 'ایالات متحده' : 'اتحادیه اروپا',
+        plate_type: 'استاندارد بین‌المللی',
+        engine: 'Tesseract.js + Pre-Process',
+        message: 'پردازش با تقویت کنتراست در مرورگر'
+      };
+    }
+
+    async function loadSamples() {
+      try {
+        const resp = await fetch('./samples/manifest.json', { cache: 'no-store' });
+        const data = await resp.json();
+        allSamples = data.samples || [];
+        renderSamples();
+      } catch {
+        document.getElementById('samplesContainer').innerHTML = '<div class="samples-empty">فایل samples/manifest.json یافت نشد.</div>';
+      }
+    }
+
+    function renderSamples() {
+      const container = document.getElementById('samplesContainer');
+      const list = activeFilter === 'ALL' ? allSamples : allSamples.filter(s => s.category === activeFilter);
+      if (!list.length) {
+        container.innerHTML = '<div class="samples-empty">نمونه‌ای در این دسته‌بندی وجود ندارد.</div>';
+        return;
+      }
+
+      container.innerHTML = `<div class="samples-grid">${list.map(s => `
+        <div class="sample-item" draggable="true" data-url="${s.url}" title="کلیک کنید یا به کادر آپلود بکشید">
+          <img class="sample-thumb" src="${s.url}" alt="${s.name}" loading="lazy" />
+          <div class="sample-info">
+            <span class="sample-name">${s.name}</span>
+            <span class="sample-tag ${s.category}">${s.category}</span>
+          </div>
+        </div>`).join('')}</div>`;
+
+      container.querySelectorAll('.sample-item').forEach(card => {
+        const url = card.dataset.url;
+        card.addEventListener('click', () => testSampleUrl(url));
+        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/sample-url', url); });
+      });
+    }
+
+    async function testSampleUrl(url) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const img = await loadImage(url);
+      await handleNewImage(img);
+    }
+
+    document.getElementById('sampleFilters').addEventListener('click', e => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      renderSamples();
+    });
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+
+    function drawMainImage(img, chars = []) {
+      mainCanvas.width = img.naturalWidth;
+      mainCanvas.height = img.naturalHeight;
+      mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+      mainCtx.drawImage(img, 0, 0);
+      const lw = Math.max(2, Math.round(mainCanvas.width / 180));
+      mainCtx.lineWidth = lw;
+      for (const c of chars) {
+        if (!c.box) continue;
+        const [x1, y1, x2, y2] = c.box;
+        mainCtx.strokeStyle = c.conf >= 0.7 ? '#10b981' : '#f59e0b';
+        mainCtx.fillStyle = c.conf >= 0.7 ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)';
+        mainCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+        mainCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      }
+      stageEmpty.style.display = 'none';
+      videoEl.style.display = 'none';
+      mainCanvas.style.display = 'block';
+    }
+
+    function animateMetaBoxes() {
+      document.querySelectorAll('#metaGrid .meta-box').forEach((box, idx) => {
+        box.classList.remove('pop');
+        void box.offsetWidth;
+        box.style.animationDelay = `${idx * 65}ms`;
+        box.classList.add('pop');
+      });
+    }
+
+    function renderGraphicalPlate(regionKey, data) {
+      const wrap = document.getElementById('plateVisual');
+      if (regionKey === 'UNKNOWN') { wrap.innerHTML = `<div class="unk-plate">پلاک ناشناخته — قابل پردازش نیست</div>`; return; }
+
+      if (regionKey === 'IRAN') {
+        const p = data.parts || {};
+        const themeClass = `theme-${data.theme || 'white'}`;
+        if (p.p1 || p.letter) {
+          wrap.innerHTML = `
+            <div class="ir-plate plate-animated ${themeClass}">
+              <div class="ir-strip"><div class="ir-flag"><span style="background:#16a34a"></span><span style="background:#fff"></span><span style="background:#dc2626"></span></div><small>I.R.<br>IRAN</small></div>
+              <div class="ir-main"><span>${toFaDigits(p.p1 || '??')}</span><span class="ir-letter">${p.letter || '?'}</span><span>${toFaDigits(p.p2 || '???')}</span></div>
+              <div class="ir-city"><span class="label">ایران</span><span class="num">${toFaDigits(p.city || '??')}</span></div>
+            </div>`;
+        } else {
+          wrap.innerHTML = `<div class="ir-plate plate-animated ${themeClass}"><div class="ir-strip"><div class="ir-flag"><span style="background:#16a34a"></span><span style="background:#fff"></span><span style="background:#dc2626"></span></div><small>I.R.<br>IRAN</small></div><div class="ir-main" style="font-size:1.3rem;">${toFaDigits(data.text || 'خوانده نشد')}</div></div>`;
+        }
+        return;
+      }
+      if (regionKey === 'US') {
+        wrap.innerHTML = `<div class="us-plate plate-animated"><div class="us-top">UNITED STATES</div><div class="us-main">${data.text || '—'}</div></div>`;
+        return;
+      }
+      wrap.innerHTML = `<div class="eu-plate plate-animated"><div class="eu-strip"><span class="eu-ring"></span><span>EU</span></div><div class="eu-main">${data.text || '—'}</div></div>`;
+    }
+
+    function renderCharChips(chars = []) {
+      const box = document.getElementById('charChips');
+      if (!chars.length) { box.innerHTML = ''; return; }
+      box.innerHTML = chars.map((c, idx) => {
+        const pct = Math.round(c.conf * 100);
+        return `<div class="chip ${pct < 70 ? 'low' : ''}" style="animation-delay:${idx * 55}ms"><strong>${c.char}</strong><small>${pct}%</small></div>`;
+      }).join('');
+    }
+
+    function renderBars(predictions) {
+      const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+      document.getElementById('barsContainer').innerHTML = sorted.map(p => {
+        const pct = (p.probability * 100).toFixed(1);
+        return `<div><div class="bar-head"><span>${p.className}</span><span>${pct}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div></div>`;
+      }).join('');
+      return sorted[0];
+    }
+
+    function addHistoryEntry(regionKey, data, totalMs) {
+      scanHistory.unshift({
+        time: new Date().toLocaleTimeString('fa-IR'),
+        region: regionKey, text: data.text || 'ناشناخته',
+        province: data.province || '—', type: data.plate_type || '—',
+        conf: data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '—',
+        ms: `${Math.round(totalMs)} ms`
+      });
+      if (scanHistory.length > 50) scanHistory.pop();
+      document.getElementById('historyCount').textContent = scanHistory.length;
+      document.getElementById('btnExportCsv').disabled = false;
+      document.getElementById('historyBody').innerHTML = scanHistory.map(row => {
+        const cls = row.region === 'IRAN' ? 'iran' : (row.region === 'UNKNOWN' ? 'unknown' : '');
+        return `<tr><td>${row.time}</td><td><span class="badge ${cls}">${row.region}</span></td><td class="mono">${row.text}</td><td>${row.province}</td><td>${row.type}</td><td>${row.conf}</td><td>${row.ms}</td></tr>`;
+      }).join('');
+    }
+
+    async function handleNewImage(img, addLog = true) {
+      currentImg = img;
+      drawMainImage(img, []);
+      if (!tmModel) return;
+
+      const tStart = performance.now();
+      stage.classList.add('scanning');
+      try {
+        lastPredictions = await tmModel.predict(img);
+        const top = renderBars(lastPredictions);
+        const threshold = Number(thresholdSlider.value) / 100;
+        const detectedKey = top.probability >= threshold ? top.className.toUpperCase() : 'UNKNOWN';
+
+        document.getElementById('metaRegion').textContent = `${REGION_LABELS[detectedKey] || detectedKey} (${(top.probability * 100).toFixed(1)}%)`;
+
+        let data;
+        if (detectedKey === 'UNKNOWN') {
+          data = { text: 'ناشناخته', chars: [], confidence: 0, province: '—', plate_type: '—', engine: 'Threshold Filter', message: 'زیر آستانه اطمینان' };
+        } else if (detectedKey === 'IRAN' && yoloSession) {
+          data = await runYoloIran(img);
+        } else {
+          data = await runForeignOCR(img, detectedKey);
+        }
+
+        const totalMs = performance.now() - tStart;
+        drawMainImage(img, data.chars || []);
+        renderGraphicalPlate(detectedKey, data);
+        renderCharChips(data.chars || []);
+
+        document.getElementById('metaProvince').textContent = data.province || '—';
+        document.getElementById('metaType').textContent = data.plate_type || '—';
+        document.getElementById('metaConf').textContent = data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '—';
+        document.getElementById('engineName').textContent = `موتور: ${data.engine}`;
+        document.getElementById('engineMsg').textContent = data.message || '';
+        document.getElementById('timePill').textContent = `${Math.round(totalMs)} ms`;
+
+        animateMetaBoxes();
+        if (addLog) addHistoryEntry(detectedKey, data, totalMs);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('engineMsg').textContent = 'خطا در پردازش تصویر';
+      } finally {
+        stage.classList.remove('scanning');
+      }
+    }
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async e => {
+      if (!e.target.files[0]) return;
+      const url = URL.createObjectURL(e.target.files[0]);
+      const img = await loadImage(url);
+      URL.revokeObjectURL(url);
+      handleNewImage(img);
+    });
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', async e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      const sampleUrl = e.dataTransfer.getData('text/sample-url');
+      if (sampleUrl) { testSampleUrl(sampleUrl); return; }
+      if (e.dataTransfer.files[0]) {
+        const url = URL.createObjectURL(e.dataTransfer.files[0]);
+        const img = await loadImage(url);
+        URL.revokeObjectURL(url);
+        handleNewImage(img);
+      }
+    });
+
+    thresholdSlider.addEventListener('input', () => { thresholdVal.textContent = `${thresholdSlider.value}%`; });
+    thresholdSlider.addEventListener('change', () => { if (currentImg) handleNewImage(currentImg, false); });
+
+    function stopWebcam() {
+      if (webcamStream) { webcamStream.getTracks().forEach(t => t.stop()); webcamStream = null; }
+      videoEl.style.display = 'none';
+      webcamBar.classList.remove('active');
+    }
+    document.getElementById('btnWebcam').addEventListener('click', async () => {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        videoEl.srcObject = webcamStream;
+        mainCanvas.style.display = 'none'; stageEmpty.style.display = 'none';
+        videoEl.style.display = 'block'; webcamBar.classList.add('active');
+      } catch (e) { alert('دسترسی به دوربین ممکن نیست: ' + e.message); }
+    });
+    document.getElementById('btnStopCam').addEventListener('click', () => { stopWebcam(); stageEmpty.style.display = 'block'; });
+    document.getElementById('btnCapture').addEventListener('click', async () => {
+      if (!videoEl.videoWidth) return;
+      const tmp = document.createElement('canvas');
+      tmp.width = videoEl.videoWidth; tmp.height = videoEl.videoHeight;
+      tmp.getContext('2d').drawImage(videoEl, 0, 0);
+      stopWebcam();
+      const img = await loadImage(tmp.toDataURL('image/jpeg', 0.95));
+      handleNewImage(img);
+    });
+
+    document.getElementById('btnClear').addEventListener('click', () => {
+      stopWebcam(); mainCanvas.style.display = 'none'; stageEmpty.style.display = 'block';
+      currentImg = null; fileInput.value = '';
+      document.getElementById('plateVisual').innerHTML = '<span class="stage-empty">پلاک پس از اسکن به‌صورت گرافیکی نمایش داده می‌شود</span>';
+      document.getElementById('charChips').innerHTML = '';
+      ['metaRegion','metaProvince','metaType','metaConf'].forEach(id => document.getElementById(id).textContent = '—');
+    });
+
+    document.getElementById('btnClearHistory').addEventListener('click', () => {
+      scanHistory = []; document.getElementById('historyCount').textContent = '0';
+      document.getElementById('btnExportCsv').disabled = true;
+      document.getElementById('historyBody').innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted);">هنوز پلاکی ثبت نشده است.</td></tr>';
+    });
+
+    document.getElementById('btnExportCsv').addEventListener('click', () => {
+      const header = ['زمان', 'منطقه', 'متن پلاک', 'استان', 'کاربری', 'اطمینان', 'زمان پردازش'];
+      const rows = scanHistory.map(r => [r.time, r.region, r.text, r.province, r.type, r.conf, r.ms]);
+      const csvContent = '\uFEFF' + [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+      a.download = `alpr_report_${Date.now()}.csv`;
+      a.click();
+    });
+
+    async function init() {
+      loadSamples();
+      try {
+        tmModel = await loadTMModel();
+        setPill('dot-tm', 'txt-tm', 'ok', 'مدل منطقه آماده');
+      } catch (e) {
+        setPill('dot-tm', 'txt-tm', 'err', 'خطای مدل منطقه');
+        console.error(e);
+      }
+      try {
+        await loadYoloModel();
+        setPill('dot-yolo', 'txt-yolo', 'ok', 'YOLO کاراکتر ایران: فعال');
+      } catch (e) {
+        setPill('dot-yolo', 'txt-yolo', 'err', 'خطای مدل YOLO ONNX');
+        console.error(e);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
