@@ -564,7 +564,9 @@
   </div>
 
   <script>
-    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
+    if (typeof ort !== 'undefined') {
+      ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
+    }
 
     let tmModel = null;
     let yoloSession = null;
