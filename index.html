@@ -564,6 +564,20 @@
   </div>
 
   <script>
+    function pickRegion(filter) {
+      const modal = document.getElementById('welcomeModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+      if (filter && filter !== 'ALL') {
+        activeFilter = filter;
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.filter === filter);
+        });
+        if (typeof renderSamples === 'function') renderSamples();
+      }
+    }
     if (typeof ort !== 'undefined') {
       ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
     }
